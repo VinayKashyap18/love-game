@@ -10,11 +10,16 @@
   },
   "dependencies": {
     "buffer": "^6.0.3",
+    "events": "^3.3.0",
     "framer-motion": "^10.16.4",
+    "process": "^0.11.10",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "simple-peer": "^9.11.1",
-    "socket.io-client": "^4.7.2"
+    "socket.io-client": "^4.7.2",
+    "stream-browserify": "^3.0.0",
+    "util": "^0.12.5",
+    "vite-plugin-node-polyfills": "^0.26.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.15",
