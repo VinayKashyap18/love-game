@@ -22,7 +22,8 @@ function App() {
   // WebRTC State
   const [stream, setStream] = useState(null)
   const [peerStream, setPeerStream] = useState(null)
-  const [callStatus, setCallStatus] = useState('idle') // idle, calling, connected
+  const [callStatus, setCallStatus] = useState('idle') // idle, calling, connected, receiving
+  const [incomingSignal, setIncomingSignal] = useState(null)
   const [micEnabled, setMicEnabled] = useState(true)
   const [videoEnabled, setVideoEnabled] = useState(true)
   
@@ -67,11 +68,14 @@ function App() {
     })
 
     socket.on('webrtc-signal', ({ signal, from }) => {
+      console.log('Received WebRTC signal');
       if (connectionRef.current) {
+        console.log('Existing connection found, signaling...');
         connectionRef.current.signal(signal)
       } else {
-        // Incoming call logic
-        handleIncomingCall(signal)
+        console.log('New incoming call, signaling for manual accept...');
+        setIncomingSignal(signal)
+        setCallStatus('receiving')
       }
     })
 
@@ -134,53 +138,93 @@ function App() {
     if (peerVideo.current) peerVideo.current.srcObject = null
   }
 
-  const handleIncomingCall = (signal) => {
+  const answerCall = () => {
+    if (!incomingSignal) return;
+    console.log('Answering call...');
     navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((currentStream) => {
+      console.log('Stream acquired for answering');
       setStream(currentStream)
       if (myVideo.current) myVideo.current.srcObject = currentStream
       setMicEnabled(true)
       setVideoEnabled(true)
       
-      const peer = new Peer({ initiator: false, trickle: false, stream: currentStream })
-      peer.on('signal', (data) => {
-        socket.emit('webrtc-signal', { roomId, signal: data })
-      })
-      peer.on('stream', (remoteStream) => {
-        setPeerStream(remoteStream)
-        if (peerVideo.current) peerVideo.current.srcObject = remoteStream
-      })
-      peer.on('close', cleanupCall)
-      peer.signal(signal)
-      connectionRef.current = peer
-      setCallStatus('connected')
+      try {
+        console.log('Initializing Peer (Responder)');
+        const peer = new Peer({ initiator: false, trickle: false, stream: currentStream })
+        
+        peer.on('signal', (data) => {
+          console.log('Peer generated signal (Responder)');
+          socket.emit('webrtc-signal', { roomId, signal: data })
+        })
+        
+        peer.on('stream', (remoteStream) => {
+          console.log('Peer remote stream received (Responder)');
+          setPeerStream(remoteStream)
+          if (peerVideo.current) peerVideo.current.srcObject = remoteStream
+        })
+        
+        peer.on('error', (err) => {
+          console.error('Peer error (Responder):', err);
+          setError(`Peer Error: ${err.message || err.name || 'Unknown'}`);
+        });
+
+        peer.on('close', cleanupCall)
+        
+        console.log('Signaling peer with incoming data...');
+        peer.signal(incomingSignal)
+        connectionRef.current = peer
+        setCallStatus('connected')
+        setIncomingSignal(null)
+      } catch (err) {
+        console.error('Peer creation/init failed:', err);
+        setError(`Connection Error: ${err.message || 'Check browser console'}`);
+      }
     }).catch(err => {
-      console.error("Media error:", err);
-      setError(`Camera/Mic Error: ${err.name} - ${err.message}`);
+      console.error("Media error during answering:", err);
+      setError(`Camera/Mic Error: ${err.name || 'Error'} - ${err.message || 'Check permissions'}`);
     })
   }
 
   const startCall = () => {
+    console.log('Starting call...');
     navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((currentStream) => {
+      console.log('Stream acquired for starting call');
       setStream(currentStream)
       if (myVideo.current) myVideo.current.srcObject = currentStream
       setMicEnabled(true)
       setVideoEnabled(true)
 
-      const peer = new Peer({ initiator: true, trickle: false, stream: currentStream })
-      peer.on('signal', (data) => {
-        socket.emit('webrtc-signal', { roomId, signal: data })
-      })
-      peer.on('stream', (remoteStream) => {
-        setPeerStream(remoteStream)
-        if (peerVideo.current) peerVideo.current.srcObject = remoteStream
-        setCallStatus('connected')
-      })
-      peer.on('close', cleanupCall)
-      connectionRef.current = peer
-      setCallStatus('calling')
+      try {
+        console.log('Initializing Peer (Initiator)');
+        const peer = new Peer({ initiator: true, trickle: false, stream: currentStream })
+        
+        peer.on('signal', (data) => {
+          console.log('Peer generated signal (Initiator)');
+          socket.emit('webrtc-signal', { roomId, signal: data })
+        })
+        
+        peer.on('stream', (remoteStream) => {
+          console.log('Peer remote stream received (Initiator)');
+          setPeerStream(remoteStream)
+          if (peerVideo.current) peerVideo.current.srcObject = remoteStream
+          setCallStatus('connected')
+        })
+
+        peer.on('error', (err) => {
+          console.error('Peer error (Initiator):', err);
+          setError(`Peer Error: ${err.message || err.name || 'Unknown'}`);
+        });
+
+        peer.on('close', cleanupCall)
+        connectionRef.current = peer
+        setCallStatus('calling')
+      } catch (err) {
+        console.error('Peer creation failed:', err);
+        setError(`Call Initialization Error: ${err.message || 'Check console'}`);
+      }
     }).catch(err => {
-      console.error("Media error:", err);
-      setError(`Camera/Mic Error: ${err.name} - ${err.message}`);
+      console.error("Media error during call start:", err);
+      setError(`Camera/Mic Error: ${err.name || 'Error'} - ${err.message || 'Check permissions'}`);
     })
   }
 
@@ -355,6 +399,10 @@ function App() {
         {callStatus === 'idle' ? (
           <button className="btn btn-secondary" onClick={startCall} style={{ width: '100%' }}>
             Start Video Call
+          </button>
+        ) : callStatus === 'receiving' ? (
+          <button className="btn btn-primary" onClick={answerCall} style={{ width: '100%', background: '#4CAF50', borderColor: '#4CAF50' }}>
+            Answer Video Call 📞
           </button>
         ) : (
           <button className="btn btn-secondary" onClick={endCall} style={{ width: '100%', background: '#ff4d4d', color: 'white', borderColor: '#ff4d4d' }}>
