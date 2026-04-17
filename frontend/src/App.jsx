@@ -167,6 +167,16 @@ function App() {
     socket.emit('select-role', { roomId, role: r, playerId: playerId.current })
   }
 
+  const leaveRoom = () => {
+    socket.emit('leave-room', { roomId, playerId: playerId.current });
+    localStorage.removeItem('love-game-room-id');
+    localStorage.removeItem('love-game-role');
+    setJoined(false);
+    setGameState(null);
+    setRole(null);
+    setRoomId('');
+  }
+
   const pickNumber = (num) => {
     if (gameState.currentPlayer.toString() === role && gameState.phase === 'picking') {
       socket.emit('pick-number', { roomId, number: num })
@@ -348,6 +358,15 @@ function App() {
               Join Room
             </button>
           </form>
+          {localStorage.getItem('love-game-room-id') && (
+            <button 
+              className="btn" 
+              onClick={leaveRoom} 
+              style={{ width: '100%', marginTop: '10px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-dim)', fontSize: '0.8rem' }}
+            >
+              Reset Session Data
+            </button>
+          )}
           {error && <p style={{ color: '#ff4d4d', marginTop: '10px' }}>{error}</p>}
         </div>
       </div>
@@ -484,6 +503,21 @@ function App() {
             <span className="badge">Turn {gameState.turn}/10</span>
           </div>
           <div className="digital-clock">{time}</div>
+          <button 
+            onClick={leaveRoom}
+            style={{ 
+              background: 'rgba(255,255,255,0.1)', 
+              border: 'none', 
+              borderRadius: '20px', 
+              padding: '5px 12px', 
+              color: 'white', 
+              fontSize: '0.7rem', 
+              cursor: 'pointer',
+              marginLeft: '10px'
+            }}
+          >
+            Leave Game
+          </button>
         </div>
 
         <div className="glass-card">

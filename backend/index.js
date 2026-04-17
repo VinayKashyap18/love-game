@@ -86,6 +86,21 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('leave-room', ({ roomId, playerId }) => {
+    if (rooms[roomId] && rooms[roomId].players[playerId]) {
+      delete rooms[roomId].players[playerId];
+      socket.leave(roomId);
+      
+      const playerRoles = {};
+      Object.entries(rooms[roomId].players).forEach(([pid, data]) => {
+        playerRoles[data.socketId] = data.role;
+      });
+      
+      io.to(roomId).emit('player-update', playerRoles);
+      console.log(`User ${playerId} left room ${roomId}`);
+    }
+  });
+
   socket.on('select-role', ({ roomId, role, playerId }) => {
     if (rooms[roomId]) {
       // Use playerId as primary key
