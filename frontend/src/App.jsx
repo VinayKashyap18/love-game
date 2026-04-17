@@ -9,6 +9,45 @@ import './App.css'
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
 const socket = io(SERVER_URL);
 
+const FloatingHearts = () => {
+  const [hearts, setHearts] = useState([]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const id = Date.now();
+      const left = Math.random() * 100;
+      const size = 10 + Math.random() * 20;
+      const duration = 15 + Math.random() * 10;
+      
+      setHearts(prev => [...prev, { id, left, size, duration }]);
+
+      // Remove heart after animation
+      setTimeout(() => {
+        setHearts(prev => prev.filter(h => h.id !== id));
+      }, duration * 1000);
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="floatingHearts">
+      {hearts.map(heart => (
+        <div
+          key={heart.id}
+          className="heart"
+          style={{
+            left: `${heart.left}%`,
+            width: `${heart.size}px`,
+            height: `${heart.size}px`,
+            animationDuration: `${heart.duration}s`
+          }}
+        />
+      ))}
+    </div>
+  );
+};
+
 function App() {
   const [roomId, setRoomId] = useState('')
   const [joined, setJoined] = useState(false)
@@ -18,6 +57,9 @@ function App() {
   const [error, setError] = useState('')
   const [rating, setRating] = useState(8)
   const [time, setTime] = useState(new Date().toLocaleTimeString())
+  
+  // Persistent Identifier
+  const playerId = useRef(localStorage.getItem('love-game-player-id') || Math.random().toString(36).substring(2) + Date.now().toString(36));
   
   // WebRTC State
   const [stream, setStream] = useState(null)
@@ -32,6 +74,14 @@ function App() {
   const connectionRef = useRef()
 
   useEffect(() => {
+    localStorage.setItem('love-game-player-id', playerId.current);
+    
+    // Check for existing room to rejoin
+    const savedRoomId = localStorage.getItem('love-game-room-id');
+    if (savedRoomId) {
+      socket.emit('rejoin-room', { roomId: savedRoomId, playerId: playerId.current });
+    }
+
     const timer = setInterval(() => setTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })), 1000);
     return () => clearInterval(timer);
   }, []);
@@ -41,13 +91,19 @@ function App() {
       setRoomId(roomId)
       setGameState(gameState)
       setJoined(true)
+      localStorage.setItem('love-game-room-id', roomId);
     })
 
-    socket.on('room-joined', ({ roomId, gameState, players }) => {
+    socket.on('room-joined', ({ roomId, gameState, players, role: rejoinedRole }) => {
       setRoomId(roomId)
       setGameState(gameState)
       setPlayers(players)
       setJoined(true)
+      localStorage.setItem('love-game-room-id', roomId);
+      if (rejoinedRole) {
+        setRole(rejoinedRole);
+        localStorage.setItem('love-game-role', rejoinedRole);
+      }
     })
 
     socket.on('player-update', (updatedPlayers) => {
@@ -60,6 +116,11 @@ function App() {
 
     socket.on('error', (err) => {
       setError(err)
+      // If re-joining fails, clear local storage
+      if (err === 'Could not rejoin room') {
+        localStorage.removeItem('love-game-room-id');
+        localStorage.removeItem('love-game-role');
+      }
       setTimeout(() => setError(''), 3000)
     })
 
@@ -102,7 +163,8 @@ function App() {
 
   const selectRole = (r) => {
     setRole(r)
-    socket.emit('select-role', { roomId, role: r })
+    localStorage.setItem('love-game-role', r);
+    socket.emit('select-role', { roomId, role: r, playerId: playerId.current })
   }
 
   const pickNumber = (num) => {
@@ -262,6 +324,7 @@ function App() {
   if (!joined) {
     return (
       <div className="container animate-fade">
+        <FloatingHearts />
         <div className="glass-card">
           <span className="badge">Connection</span>
           <h1>Love Game 💖</h1>
@@ -294,6 +357,7 @@ function App() {
   if (!role) {
     return (
       <div className="container animate-fade">
+        <FloatingHearts />
         <div className="glass-card">
           <span className="badge">Room: {roomId}</span>
           <h2>Who are you?</h2>
@@ -325,6 +389,7 @@ function App() {
   if (gameState.phase === 'lobby') {
     return (
       <div className="container animate-fade">
+        <FloatingHearts />
         <div className="glass-card">
           <span className="badge">Room: {roomId}</span>
           <h2>Waiting for Opponent...</h2>
@@ -339,6 +404,7 @@ function App() {
 
   return (
     <div className="container animate-fade" style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', maxWidth: '1200px' }}>
+      <FloatingHearts />
       {/* Video Sidebar */}
       <div className="video-sidebar">
         {error && <div style={{ background: 'rgba(255, 77, 77, 0.2)', border: '1px solid #ff4d4d', color: '#ff4d4d', padding: '10px', borderRadius: '10px', fontSize: '0.9rem', marginBottom: '10px' }}>{error}</div>}

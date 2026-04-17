@@ -51,20 +51,55 @@ io.on('connection', (socket) => {
   socket.on('join-room', (roomId) => {
     if (rooms[roomId]) {
       socket.join(roomId);
-      socket.emit('room-joined', { roomId, gameState: rooms[roomId].gameState, players: rooms[roomId].players });
+      // Send current players (mapped to their roles)
+      const playerRoles = {};
+      Object.entries(rooms[roomId].players).forEach(([pid, data]) => {
+        playerRoles[data.socketId] = data.role;
+      });
+      socket.emit('room-joined', { roomId, gameState: rooms[roomId].gameState, players: playerRoles });
       console.log('User joined room:', roomId);
     } else {
       socket.emit('error', 'Room not found');
     }
   });
 
-  socket.on('select-role', ({ roomId, role }) => {
+  socket.on('rejoin-room', ({ roomId, playerId }) => {
+    if (rooms[roomId] && rooms[roomId].players[playerId]) {
+      const player = rooms[roomId].players[playerId];
+      player.socketId = socket.id; // Update socket ID
+      socket.join(roomId);
+      
+      const playerRoles = {};
+      Object.entries(rooms[roomId].players).forEach(([pid, data]) => {
+        playerRoles[data.socketId] = data.role;
+      });
+
+      socket.emit('room-joined', { 
+        roomId, 
+        gameState: rooms[roomId].gameState, 
+        players: playerRoles,
+        role: player.role 
+      });
+      console.log(`User ${playerId} rejoined room ${roomId} as role ${player.role}`);
+    } else {
+      socket.emit('error', 'Could not rejoin room');
+    }
+  });
+
+  socket.on('select-role', ({ roomId, role, playerId }) => {
     if (rooms[roomId]) {
-      rooms[roomId].players[socket.id] = role;
-      io.to(roomId).emit('player-update', rooms[roomId].players);
+      // Use playerId as primary key
+      rooms[roomId].players[playerId] = { role, socketId: socket.id };
+      
+      const playerRoles = {};
+      Object.entries(rooms[roomId].players).forEach(([pid, data]) => {
+        playerRoles[data.socketId] = data.role;
+      });
+      
+      io.to(roomId).emit('player-update', playerRoles);
       
       // If both roles are filled, start the game
-      const roles = Object.values(rooms[roomId].players);
+      const roles = Object.values(rooms[roomId].players).map(p => p.role);
       if (roles.includes('1') && roles.includes('2')) {
         rooms[roomId].gameState.phase = 'picking';
         io.to(roomId).emit('state-update', rooms[roomId].gameState);
